@@ -1,0 +1,38 @@
+version: 0.2
+
+env:
+  variables:
+    CODE_SRC_DIR: "."
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+    commands:
+      - echo Installing necessary packages...
+      - yum install -y yum-utils wget unzip
+      - echo Downloading and installing Trivy...
+      - TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep tag_name | cut -d '"' -f4)
+      - wget https://github.com/aquasecurity/trivy/releases/download/${TRIVY_VERSION}/trivy_${TRIVY_VERSION#v}_Linux-64bit.tar.gz
+      - tar -xzf trivy_${TRIVY_VERSION#v}_Linux-64bit.tar.gz
+      - mv trivy /usr/local/bin/
+      - trivy --version
+      - wget https://releases.hashicorp.com/terraform/1.8.0/terraform_1.8.0_linux_amd64.zip
+      - unzip terraform_1.8.0_linux_amd64.zip
+      - mv terraform /usr/local/bin/
+      
+  pre_build:
+    commands:
+      - echo Initializing Terraform...
+      - cd ${CODEBUILD_SRC_DIR}/${CODE_SRC_DIR}
+      - terraform init
+
+  build:
+    commands:
+      - echo Running Trivy scan...
+      - trivy config ${CODEBUILD_SRC_DIR}/${CODE_SRC_DIR}
+      - echo Running Trivy scan completed...
+
+artifacts:
+  files:
+    - '**/*'

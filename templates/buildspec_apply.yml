@@ -1,0 +1,28 @@
+version: 0.2
+
+env:
+  variables:
+    CODE_SRC_DIR: "."
+    
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+    commands:
+      - echo Installing necessary packages...
+      - yum install -y yum-utils wget unzip
+      - echo Downloading and installing Terraform...
+      - wget https://releases.hashicorp.com/terraform/1.8.0/terraform_1.8.0_linux_amd64.zip
+      - unzip terraform_1.8.0_linux_amd64.zip
+      - mv terraform /usr/local/bin/
+  build:
+    commands:
+      - cd ${CODEBUILD_SRC_DIR}/${CODE_SRC_DIR}
+      - terraform init
+      - echo Starting with the Terraform Apply
+      - terraform apply --auto-approve
+      
+
+artifacts:
+  files:
+    - '**/*'

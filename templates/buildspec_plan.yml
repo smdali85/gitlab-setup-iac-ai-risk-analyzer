@@ -1,0 +1,82 @@
+version: 0.2
+
+env:
+  variables:
+    CODE_SRC_DIR: "."
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.9
+    commands:
+      - echo "Installing necessary packages..."
+      - yum install -y yum-utils wget unzip jq
+      - echo "Downloading and installing Terraform..."
+      - wget https://releases.hashicorp.com/terraform/1.8.0/terraform_1.8.0_linux_amd64.zip
+      - unzip terraform_1.8.0_linux_amd64.zip
+      - mv terraform /usr/local/bin/
+      - echo "Installing AWS CLI & Python libs..."
+      - pip install awscli boto3
+
+  build:
+    commands:
+      - cd ${CODEBUILD_SRC_DIR}/${CODE_SRC_DIR}
+
+      - echo "Initializing Terraform..."
+      - terraform init
+
+      - echo "Validating Terraform configuration..."
+      - terraform validate
+
+      - echo "Generating Terraform plan..."
+      - terraform plan -out=tfplan
+
+      - echo "Converting plan to JSON..."
+      - terraform show -json tfplan > plan.json
+
+      - echo "Preparing payload for AI Risk Analyzer..."
+      - echo "Uploading plan to S3..."
+      - aws s3 cp plan.json s3://gitlab-iac-setup-test/plans/plan.json
+      - echo "Preparing lightweight payload..."
+      - |
+        echo '{
+          "s3_bucket": "gitlab-iac-setup-test",
+          "s3_key": "plans/plan.json"
+        }' > input.json
+
+      - echo "Calling AI Risk Analyzer..."
+      - |
+        aws lambda invoke \
+          --function-name risk-analyzer-test-function \
+          --payload file://input.json \
+          response.json
+
+      - echo "AI Response:"
+      - cat response.json
+
+      - echo "Extracting AI analysis..."
+      - |
+        ANALYSIS=$(cat response.json | jq -r '.analysis')
+        echo "$ANALYSIS"
+
+      - echo "Evaluating risk..."
+
+      - |
+        RISK=$(echo "$ANALYSIS" | jq -r '.risk')
+
+        echo "Detected Risk Level: $RISK"
+
+        if [ "$RISK" = "HIGH" ]; then
+          echo "HIGH RISK detected. Failing pipeline."
+          exit 1
+
+        elif [ "$RISK" = "MEDIUM" ]; then
+          echo "MEDIUM RISK detected. Approval recommended."
+
+        else
+          echo "LOW RISK detected. Proceeding."
+        fi
+
+artifacts:
+  files:
+    - '**/*'
